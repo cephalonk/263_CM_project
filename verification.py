@@ -66,7 +66,7 @@ def run_zero_forcing():
 
 
 def plot_zero_forcing(r):
-    fig, ax = plt.subplots(1, 3, figsize=(15, 4.2))
+    fig, ax = plt.subplots(1, 2, figsize=(15, 6))
 
     # Panel 1: test (a). The simulated line should lie exactly on P0.
     ax[0].plot(r["t"] / YEAR, r["P_a"] / 1e6, lw=2,label="simulator")
