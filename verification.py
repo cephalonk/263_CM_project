@@ -1,49 +1,5 @@
 """
 Waikite Geyser: VERIFICATION of the pressure ODE solver.
-
-WHAT VERIFICATION MEANS
------------------------
-Verification asks: "does the code solve the equations I wrote down,
-correctly?"  It does NOT ask whether the equations describe the real geyser
-(that is validation, in validation.py).  So here we never touch real data.
-We only compare the simulator against solutions we know exactly.
-
-THE EQUATION BEING TESTED
--------------------------
-    dP/dt = g / (A_res * phi) * [ -q(t) - (rho*k*A / (mu*L)) * (P - P0) ]
-
-Define two lumped constants:
-    a   = g / (A_res * phi)                   [Pa / kg]   (turns kg/s into Pa/s)
-    lam = a * rho*k*A / (mu*L)                [1 / s]     (recharge decay rate)
-
-Then the equation is simply
-    dP/dt = -a*q(t) - lam*(P - P0)
-
-This is LINEAR in P, which is why exact solutions are easy to get.
-1/lam is the natural time scale of the reservoir: how long it takes pressure
-to relax back towards P0.  We choose test durations and forcing periods
-comparable to 1/lam so that the tests are not trivially easy.
-
-THE TWO TESTS
--------------
-1. Zero-forcing benchmark (q = 0).
-     (a) Start at P0      -> exact answer: P(t) = P0 forever.
-     (b) Start at P0 + dP -> exact answer: P0 + dP * exp(-lam t).
-2. Method of Manufactured Solutions (MMS).
-     Choose ANY smooth function P_m(t).  It will not satisfy the real ODE,
-     so we add a "source" term s(t) chosen so that it DOES:
-         s(t) = dP_m/dt - f(t, P_m)
-     Then dP/dt = f(t, P) + s(t) has P_m as its exact solution.  We run the
-     simulator with source=s and check it reproduces P_m.
-
-PASS CRITERIA (stated BEFORE running, so we cannot fudge them afterwards)
-    Zero-forcing (a): max |P - P0|                      < 1e-6 Pa
-    Zero-forcing (b): max |P - exact| / dP              < 1e-6
-    MMS             : max |P - P_m| / (pressure range)  < 1e-6  at the default tolerances
-
-Run:  python verification.py
-Needs simulator.py and calibration.py in the same folder.
-Outputs: verif_zero_forcing.png, verif_mms.png, verif_convergence.png
 """
 
 import numpy as np
@@ -90,18 +46,18 @@ def run_zero_forcing():
     # (a) Start exactly at equilibrium, no extraction: nothing should happen.
     #     RHS = a*(-0 - lam/a*(P0 - P0)) = 0 exactly, so we expect
     #     an error of exactly zero (or at worst round-off).
+    # exact model is just line at P0
     t, P = solve_pressure(q_zero, t0, t1, pars, t_eval, MAX_STEP,
                           rtol=RTOL, atol=ATOL)
     err_a = np.abs(P - P0)
 
-    # (b) Start away from equilibrium, still no extraction.
-    #     Exact solution: exponential relaxation back to P0 at rate lam.
-    #     This tests that the recharge term has the right SIGN and SIZE.
-    #     (Test (a) cannot catch a wrong recharge coefficient, because
-    #      P - P0 = 0 multiplies it. Test (b) can.)
+    # (b) Pressure starts away from eq. and converges to the equilibrium
+    # model using solve pressures function
     dP0 = 2.0e5                                  # Pa, 0.2 MPa offset (~14% of P0)
     t_b, P_b = solve_pressure(q_zero, t0, t1, pars, t_eval, MAX_STEP,
                               P_init=P0 + dP0, rtol=RTOL, atol=ATOL)
+
+    # exact model (see derivation)
     P_exact_b = P0 + dP0 * np.exp(-lam * (t_b - t0))
     err_b = np.abs(P_b - P_exact_b)
 
