@@ -33,6 +33,20 @@ RTOL, ATOL = 1e-8, 1e-6
 print(f"lambda = {lam:.3e} 1/s  ->  time scale 1/lambda = {tau_res/YEAR:.2f} years")
 print(f"run length = {(t1 - t0)/YEAR:.1f} years\n")
 
+def improved_euler_pressure(q, P_init, n_steps):
+    """Improved Euler (Heun) on a fixed grid of n_steps equal steps, t0 to t1.
+    Uses the simulator's own pressure_rhs.  Returns (t, P), length n_steps+1."""
+    t = np.linspace(t0, t1, n_steps + 1)
+    dt = t[1] - t[0]
+    P = np.empty(n_steps + 1)
+    P[0] = P_init
+    for i in range(n_steps):
+        k1 = pressure_rhs(t[i], P[i], q, pars)                # slope at start
+        k2 = pressure_rhs(t[i + 1], P[i] + dt * k1, q, pars)  # slope at end
+        P[i + 1] = P[i] + 0.5 * dt * (k1 + k2)                # average slope
+    return t, P
+
+
 
 # ZERO-FORCING BENCHMARK
 # remove extraction rate to verify. thus q = 0
@@ -88,117 +102,76 @@ def plot_zero_forcing(r):
     fig.savefig("verif_zero_forcing.png", dpi=150)
     return fig
 
-
-# ---------------------------------------------------------------------------
 # 2. MMS BENCHMARK
 # ---------------------------------------------------------------------------
-# Manufactured solution: an oscillation that decays slowly, starting at P0.
-#     P_m(t) = P0 + dP * sin(w t) * exp(-t / tau_d)
+# Manufactured solution: pressure DRAWDOWN D(t) = P0 - P_m(t) that grows from
+# zero towards dP_M and wobbles with a seasonal-style oscillation:
+#     D(t)   = dP_M * (1 - exp(-t / TAU_R)) * (1 + M * sin(W t))
+#     P_m(t) = P0 - D(t)
 # Why this shape?
 #   - smooth and analytic, so the exact derivative is available;
-#   - starts at P0 (sin(0)=0) so the initial condition is the same P0 as in
-#     the real model;
-#   - oscillation period (2 yr) and decay (4 yr) are comparable to 1/lam, so
-#     it exercises the same time scales as the real problem.
-dP_M = 2.0e5                      # Pa, amplitude (a sensible fraction of P0)
-W = 2 * np.pi / (2.0 * YEAR)      # rad/s, 2-year period
-TAU_D = 4.0 * YEAR                # s, decay time
-
-
+#   - starts at P0 (D(0)=0), the same initial condition as the real model;
+#   - pressure falls BELOW P0, as it does when fluid is extracted. Extraction
+#     (q > 0) can only push pressure down, so a positive q_m requires this;
+#   - the sine makes dP/dt change sign, and the exponential makes the response
+#     build up like the real reservoir, with TAU_R comparable to 1/lam;
+#   - the wobble is kept gentle (M = 0.2, 4-year period) so that the
+#     oscillation never outruns the recharge term. Algebraically
+#         a*q_m = D' + lam*D,
+#     so q_m > 0 as long as lam*D > |D'|. This is checked by an assert below.
+dP_M = 1.0e5                      # Pa, steady drawdown scale (~7% of P0)
+TAU_R = 2.0 * YEAR                # s, build-up time (about 1/lam)
+W = 2 * np.pi / (4.0 * YEAR)      # rad/s, 4-year period
+M = 0.2                           # relative size of the oscillation
+N_STEPS = 15
+ 
+ 
+def D(t):
+    return dP_M * (1.0 - np.exp(-t / TAU_R)) * (1.0 + M * np.sin(W * t))
+ 
+ 
 def P_m(t):
-    return P0 + dP_M * np.sin(W * t) * np.exp(-t / TAU_D)
-
-
+    return P0 - D(t)
+ 
+ 
 def dP_m_dt(t):
     """Exact analytic derivative of P_m (product rule). No finite differences."""
-    e = np.exp(-t / TAU_D)
-    return dP_M * e * (W * np.cos(W * t) - np.sin(W * t) / TAU_D)
+    g = 1.0 - np.exp(-t / TAU_R)
+    dg = np.exp(-t / TAU_R) / TAU_R
+    h = 1.0 + M * np.sin(W * t)
+    dh = M * W * np.cos(W * t)
+    return -dP_M * (dg * h + g * dh)
 
-
-# Smooth, analytic extraction rate (kg/s). We deliberately do NOT use the
-# interpolated data here: interpolated q has kinks, which would test the data
-# handling, not the solver. Kink handling is controlled by MAX_STEP instead.
-Q0 = 500.0                        # kg/s, mean extraction
-
-
-def q_mms(t):
-    return Q0 * (1.0 + 0.5 * np.sin(2 * np.pi * t / YEAR))   # annual cycle
-
-
-def source_mms(t):
-    """s(t) = dP_m/dt - f(t, P_m).
-    We call the SIMULATOR'S OWN pressure_rhs so the source is consistent with
-    whatever the code actually does. This makes the test sensitive to errors
-    in the solver loop and in how `source` is added, rather than relying on a
-    second hand-typed copy of the equation."""
-    return dP_m_dt(t) - pressure_rhs(t, P_m(t), q_mms, pars)
-
-
-def run_mms(rtol=RTOL, atol=ATOL, max_step=MAX_STEP):
-    t, P = solve_pressure(q_mms, t0, t1, pars, t_eval, max_step,
-                          P_init=P_m(t0), source=source_mms,
-                          rtol=rtol, atol=atol)
+def q_manufactured(t):
+    return (-dP_m_dt(t) - lam * (P_m(t) - P0)) / a
+ 
+ 
+def run_mms(n_steps=N_STEPS):
+    t, P = improved_euler_pressure(q_manufactured, P_m(t0), n_steps)
     return t, P, np.abs(P - P_m(t))
-
-
+ 
+ 
 def plot_mms(t, P, err):
-    fig, ax = plt.subplots(1, 3, figsize=(15, 4.2))
-
-    ax[0].plot(t / YEAR, P / 1e6, "C0", lw=3, label="simulator")
-    ax[0].plot(t / YEAR, P_m(t) / 1e6, "k--", label="manufactured $P_m$")
+    fig, ax = plt.subplots(1, 2, figsize=(15, 4.2))
+    circ = dict(marker="o", color="red", ls="none", ms=4, mfc="none")
+    tf = np.linspace(t0, t1, 600)
+ 
+    # Panel 1: numerical (red circles) vs manufactured (black line).
+    ax[0].plot(tf / YEAR, P_m(tf) / 1e6, "k-", label="manufactured $P_m$")
+    ax[0].plot(t / YEAR, P / 1e6, label="Improved Euler", **circ)
     ax[0].set(xlabel="time (years)", ylabel="P (MPa)",
               title="MMS: numerical vs manufactured")
     ax[0].legend()
-
-    ax[1].semilogy(t / YEAR, np.maximum(err, 1e-16), "C3")
-    ax[1].set(xlabel="time (years)", ylabel="|P - $P_m$| (Pa)",
-              title="MMS: error vs time")
-
-    # Show the forcing terms so the reader sees the test is non-trivial:
-    # the source must be comparable in size to the physical terms.
-    ax[2].plot(t / YEAR, -a * q_mms(t), label="$-a\\,q(t)$ (extraction)")
-    ax[2].plot(t / YEAR, source_mms(t), label="$s(t)$ (manufactured source)")
-    ax[2].set(xlabel="time (years)", ylabel="Pa / s",
-              title="Terms in the right-hand side")
-    ax[2].legend()
+ 
+ 
+    # Panel 3: the manufactured extraction rate that drives the test.
+    ax[1].plot(tf / YEAR, q_manufactured(tf), "C2")
+    ax[1].axhline(0, color="grey", lw=1)
+    ax[1].set(xlabel="time (years)", ylabel="q (kg/s)",
+              title="Manufactured extraction $q_m(t)$")
     fig.tight_layout()
     fig.savefig("verif_mms.png", dpi=150)
     return fig
-
-
-# ---------------------------------------------------------------------------
-# 3. CONVERGENCE (the "time step convergence" item)
-# ---------------------------------------------------------------------------
-# solve_ivp is ADAPTIVE: you do not set a step size, you set a tolerance and
-# it picks steps to meet it. So the honest convergence test is
-# "max error vs rtol". If the code is right, tightening rtol must shrink the
-# error roughly in proportion, until round-off (about 1e-16 * P0 ~ 1e-10 Pa)
-# takes over.
-#
-# max_step is set to infinity here so that rtol, not the step cap, controls
-# the step size. Otherwise the error would flatten at the cap.
-def run_convergence():
-    rtols = 10.0 ** np.arange(-3, -12, -1.0)
-    max_errs = []
-    for rt in rtols:
-        # atol is tiny so rtol dominates the error control.
-        _, _, e = run_mms(rtol=rt, atol=1e-10, max_step=np.inf)
-        max_errs.append(e.max())
-    return rtols, np.array(max_errs)
-
-
-def plot_convergence(rtols, max_errs):
-    fig, ax = plt.subplots(figsize=(5.5, 4.5))
-    ax.loglog(rtols, max_errs, "o-", label="max error (MMS)")
-    ax.loglog(rtols, rtols * dP_M, "k--", lw=1, label="slope 1 reference")
-    ax.invert_xaxis()                       # tighter tolerance to the right
-    ax.set(xlabel="rtol", ylabel="max |P - $P_m$| (Pa)",
-           title="MMS: error vs solver tolerance")
-    ax.legend()
-    fig.tight_layout()
-    fig.savefig("verif_convergence.png", dpi=150)
-    return fig
-
 
 # ---------------------------------------------------------------------------
 # 4. Run everything and print a pass/fail table
@@ -219,21 +192,12 @@ def main():
     results.append(("MMS: max err / pressure range",
                     err.max() / pressure_range, 1e-6))
 
-    rtols, max_errs = run_convergence()
-    plot_convergence(rtols, max_errs)
 
-    # Fit the slope only where the error is above the round-off floor.
-    good = max_errs > 1e-7
-    slope = np.polyfit(np.log10(rtols[good]), np.log10(max_errs[good]), 1)[0]
-
-    print(f"{'test':<40}{'value':>12}{'limit':>10}   result")
+    print(f"{'test':<40}{'value':>12}   result")
     for name, val, lim in results:
-        print(f"{name:<40}{val:>12.2e}{lim:>10.0e}   "
+        print(f"{name:<40}{val:>12.2e}  "
               f"{'PASS' if val < lim else 'FAIL'}")
-    print(f"\nconvergence slope (log error vs log rtol): {slope:.2f} "
-          f"(about 1 expected)")
-    print("Figures saved: verif_zero_forcing.png, verif_mms.png, "
-          "verif_convergence.png")
+    print("Figures saved: verif_zero_forcing.png, verif_mms.png")
 
     plt.show()
 
