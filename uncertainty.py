@@ -148,12 +148,12 @@ axes2[1, 0].set_ylabel("reservoir temperature [°C]")
 axes2[0, 0].legend()
 fig2.tight_layout()
 
-# ---- 5. 90% prediction intervals ------------------------------------------
-print(f"\n90% prediction intervals in {yr_f[i_rep]:.0f} "
-      f"(5th to 95th percentile of the samples)")
+# ---- 5. 95% prediction intervals ------------------------------------------
+print(f"\n95% prediction intervals in {yr_f[i_rep]:.0f} "
+      f"(2.5th to 97.5th percentile of the samples)")
 for name, (P_ens, T_ens) in results.items():
-    P_lo, P_hi = np.percentile(P_ens[:, i_rep], [5, 95])
-    T_lo, T_hi = np.percentile(T_ens[:, i_rep], [5, 95])
+    P_lo, P_hi = np.percentile(P_ens[:, i_rep], [2.5, 97.5])
+    T_lo, T_hi = np.percentile(T_ens[:, i_rep], [2.5, 97.5])
     print(f"{name:<15} pressure: {P_lo:.3f} to {P_hi:.3f} MPa   "
           f"temperature: {T_lo:.1f} to {T_hi:.1f} °C")
 
