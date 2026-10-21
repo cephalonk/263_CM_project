@@ -5,7 +5,8 @@ Uncertainty analysis for the calibrated geyser model.
 2. Sample parameter sets from the Gaussian approximation of the posterior.
 3. Plot the Gaussian posterior contours: every parameter pair (2x3 grid), then
    just a vs b and c vs d (1x2 grid).
-4. Forecast under each extraction scenario with every sample, and plot the ensemble.
+4. Forecast under each extraction scenario with every sample, and plot the ensembles
+   with all scenarios overlaid (one colour each): one pressure plot, one temperature plot.
 5. Report 90% prediction intervals (5th to 95th percentile of the samples).
 
 The pressure and temperature stages were calibrated separately, so their
@@ -16,7 +17,7 @@ import matplotlib.pyplot as plt
 from scipy.stats import multivariate_normal
 
 from simulator import make_q
-from calibration_updated_2 import (df, year, t_data, SEC_PER_YEAR, TDAY_TO_KGS,
+from calibration import (df, year, t_data, SEC_PER_YEAR, TDAY_TO_KGS,
                                 P_obs, T_obs, has_P, has_T,
                                 simulate, to_sim_pars, compound_initial,
                                 free_P, free_T, fit_P, cov_P, fit_T, cov_T, cal)
@@ -27,8 +28,8 @@ END_YEAR = 2050             # forecast horizon (must be after the last data year
 REPORT_YEAR = END_YEAR      # year at which the prediction intervals are reported
 SCENARIOS = {               # future extraction as a multiple of the last recorded rate
     "no extraction": 0.0,   # edit these to match the scenarios in your brief
-    "current rate": 1.0,
-    "double rate": 1.5,
+    "current extraction rate": 1.0,
+    "increased extraction (1.5x)": 1.5,
 }
 
 # ---- 1. parameter uncertainty ---------------------------------------------
@@ -121,10 +122,17 @@ def scenario_q(factor):
     return make_q(t_s, q_s)
 
 
-fig2, axes2 = plt.subplots(2, len(SCENARIOS), sharex=True, sharey="row",
-                           figsize=(13, 7), squeeze=False)
+SCENARIO_COLOURS = ["tab:blue", "tab:orange", "tab:red"]   # one per scenario, in order
+
+# Forecast portion starts one point before the last data year so the lines join the history.
+i0 = max(np.searchsorted(yr_f, year[-1]) - 1, 0)
+fut = slice(i0, None)
+hist = slice(0, i0 + 1)
+
+fig2, (axP, axT) = plt.subplots(2, 1, sharex=True, figsize=(10, 8))
 results = {}
-for col, (name, factor) in enumerate(SCENARIOS.items()):
+for k, (name, factor) in enumerate(SCENARIOS.items()):
+    colour = SCENARIO_COLOURS[k % len(SCENARIO_COLOURS)]
     q_f = scenario_q(factor)
     runs = [simulate(s, t_f, q_f) for s in samples]
     runs = [r for r in runs if len(r[0]) == len(t_f)]          # drop failed solves
@@ -132,20 +140,25 @@ for col, (name, factor) in enumerate(SCENARIOS.items()):
     T_ens = np.array([r[2] for r in runs])                     # degC
     _, P_best, T_best = simulate(cal, t_f, q_f)
     results[name] = (P_ens, T_ens)
+    label = f"{name})"
 
-    for ax, ens, best, obs, obs_yr in [
-            (axes2[0, col], P_ens, P_best / 1e6, P_obs[has_P] / 1e6, year[has_P]),
-            (axes2[1, col], T_ens, T_best, T_obs[has_T], year[has_T])]:
-        ax.plot(yr_f, ens.T, color="tab:green", linewidth=0.5, alpha=0.2)
-        ax.plot(yr_f, best, color="tab:red", linewidth=1.5, label="best fit")
-        ax.plot(obs_yr, obs, "k.", label="data")
-        ax.axvline(year[-1], color="grey", linestyle=":")
-    axes2[0, col].set_title(f"{name} ({factor * q_last_tday:.0f} t/day)")
-    axes2[1, col].set_xlabel("year")
+    for ax, ens, best in [(axP, P_ens, P_best / 1e6), (axT, T_ens, T_best)]:
+        ax.plot(yr_f[fut], ens[:, fut].T, color=colour, linewidth=0.5, alpha=0.15)
+        ax.plot(yr_f[fut], best[fut], color=colour, linewidth=2, label=label)
+        if k == 0:   # the history is the same in every scenario, so draw it once
+            ax.plot(yr_f[hist], best[hist], color="k", linewidth=1.5,
+                    label="best fit (history)")
 
-axes2[0, 0].set_ylabel("reservoir pressure [MPa]")
-axes2[1, 0].set_ylabel("reservoir temperature [°C]")
-axes2[0, 0].legend()
+axP.plot(year[has_P], P_obs[has_P] / 1e6, "k.", label="data")
+axT.plot(year[has_T], T_obs[has_T], "k.", label="data")
+for ax in (axP, axT):
+    ax.axvline(year[-1], color="grey", linestyle=":")
+
+axP.set_ylabel("reservoir pressure [MPa]")
+axT.set_ylabel("reservoir temperature [°C]")
+axT.set_xlabel("year")
+axP.set_title("Forecast under each extraction scenario")
+axP.legend()
 fig2.tight_layout()
 
 # ---- 5. 95% prediction intervals ------------------------------------------
