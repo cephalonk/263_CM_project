@@ -8,6 +8,16 @@ import matplotlib.pyplot as plt
 from simulator import solve_pressure, pressure_rhs
 from calibration import pars_initial
 
+FONT_SIZE = 18
+plt.rcParams.update({
+    "font.size": FONT_SIZE,
+    "axes.labelsize": FONT_SIZE,
+    "axes.titlesize": FONT_SIZE + 2,
+    "xtick.labelsize": FONT_SIZE,
+    "ytick.labelsize": FONT_SIZE,
+    "legend.fontsize": FONT_SIZE - 2,
+})
+
 # ---------------------------------------------------------------------------
 # 0. Setup: parameters and derived constants (all SI: Pa, kg/s, s)
 # ---------------------------------------------------------------------------
@@ -84,6 +94,7 @@ def plot_zero_forcing(r):
     ax[1].set(xlabel="time (years)", ylabel="P (MPa)",
               title="(b) q = 0, start at $P_0$ + 0.2 MPa")
     ax[1].legend()
+    fig.tight_layout()
 
     fig.savefig("verif_zero_forcing.png", dpi=150)
     return fig
