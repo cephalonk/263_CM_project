@@ -22,14 +22,24 @@ from calibration import (df, year, t_data, SEC_PER_YEAR, TDAY_TO_KGS,
                                 simulate, to_sim_pars, compound_initial,
                                 free_P, free_T, fit_P, cov_P, fit_T, cov_T, cal)
 
+FONT_SIZE = 18
+plt.rcParams.update({
+    "font.size": FONT_SIZE,
+    "axes.labelsize": FONT_SIZE,
+    "axes.titlesize": FONT_SIZE + 2,
+    "xtick.labelsize": FONT_SIZE,
+    "ytick.labelsize": FONT_SIZE,
+    "legend.fontsize": FONT_SIZE - 2,
+})
+
 # ---- settings you may want to change --------------------------------------
 N_SAMPLES = 100
 END_YEAR = 2050             # forecast horizon (must be after the last data year)
 REPORT_YEAR = END_YEAR      # year at which the prediction intervals are reported
 SCENARIOS = {               # future extraction as a multiple of the last recorded rate
     "no extraction": 0.0,   # edit these to match the scenarios in your brief
-    "current extraction rate": 1.0,
-    "increased extraction (1.5x)": 1.5,
+    "current rate": 1.0,
+    "increased rate (1.5x)": 1.5,
 }
 
 # ---- 1. parameter uncertainty ---------------------------------------------
@@ -102,6 +112,16 @@ axes1b[0].legend()
 fig1b.suptitle("Posterior (Gaussian approximation): a vs b and c vs d")
 fig1b.tight_layout()
 
+FONT_SIZE = 14
+plt.rcParams.update({
+    "font.size": FONT_SIZE,
+    "axes.labelsize": FONT_SIZE + 3,
+    "axes.titlesize": FONT_SIZE + 6,
+    "xtick.labelsize": FONT_SIZE + 4,
+    "ytick.labelsize": FONT_SIZE + 4,
+    "legend.fontsize": FONT_SIZE - 2,
+})
+
 # ---- 4. forecast each scenario with every sample --------------------------
 extraction_tday = df["extraction_[tonnes/day]"].to_numpy()
 extraction_kgs = extraction_tday * TDAY_TO_KGS
@@ -140,7 +160,7 @@ for k, (name, factor) in enumerate(SCENARIOS.items()):
     T_ens = np.array([r[2] for r in runs])                     # degC
     _, P_best, T_best = simulate(cal, t_f, q_f)
     results[name] = (P_ens, T_ens)
-    label = f"{name})"
+    label = f"{name}"
 
     for ax, ens, best in [(axP, P_ens, P_best / 1e6), (axT, T_ens, T_best)]:
         ax.plot(yr_f[fut], ens[:, fut].T, color=colour, linewidth=0.5, alpha=0.15)
@@ -157,7 +177,6 @@ for ax in (axP, axT):
 axP.set_ylabel("reservoir pressure [MPa]")
 axT.set_ylabel("reservoir temperature [°C]")
 axT.set_xlabel("year")
-axP.set_title("Forecast under each extraction scenario")
 axP.legend()
 fig2.tight_layout()
 

@@ -26,6 +26,16 @@ from scipy.optimize import least_squares
 
 from simulator import make_q, solve_model
 
+FONT_SIZE = 18
+plt.rcParams.update({
+    "font.size": FONT_SIZE,
+    "axes.labelsize": FONT_SIZE,
+    "axes.titlesize": FONT_SIZE + 2,
+    "xtick.labelsize": FONT_SIZE,
+    "ytick.labelsize": FONT_SIZE,
+    "legend.fontsize": FONT_SIZE - 2,
+})
+
 # ---- settings you may want to change --------------------------------------
 DATA_FILE = "data/rotorua_data.csv"
 free_P = ["a", "b", "P0"]       # compound parameters of the pressure ODE
