@@ -33,20 +33,6 @@ RTOL, ATOL = 1e-8, 1e-6
 print(f"lambda = {lam:.3e} 1/s  ->  time scale 1/lambda = {tau_res/YEAR:.2f} years")
 print(f"run length = {(t1 - t0)/YEAR:.1f} years\n")
 
-def improved_euler_pressure(q, P_init, n_steps):
-    """Improved Euler (Heun) on a fixed grid of n_steps equal steps, t0 to t1.
-    Uses the simulator's own pressure_rhs.  Returns (t, P), length n_steps+1."""
-    t = np.linspace(t0, t1, n_steps + 1)
-    dt = t[1] - t[0]
-    P = np.empty(n_steps + 1)
-    P[0] = P_init
-    for i in range(n_steps):
-        k1 = pressure_rhs(t[i], P[i], q, pars)                # slope at start
-        k2 = pressure_rhs(t[i + 1], P[i] + dt * k1, q, pars)  # slope at end
-        P[i + 1] = P[i] + 0.5 * dt * (k1 + k2)                # average slope
-    return t, P
-
-
 
 # ZERO-FORCING BENCHMARK
 # remove extraction rate to verify. thus q = 0
@@ -123,17 +109,17 @@ dP_M = 1.0e5                      # Pa, steady drawdown scale (~7% of P0)
 TAU_R = 2.0 * YEAR                # s, build-up time (about 1/lam)
 W = 2 * np.pi / (4.0 * YEAR)      # rad/s, 4-year period
 M = 0.2                           # relative size of the oscillation
-N_STEPS = 15
- 
- 
+N_PTS = 40                        # output points for the MMS comparison
+
+
 def D(t):
     return dP_M * (1.0 - np.exp(-t / TAU_R)) * (1.0 + M * np.sin(W * t))
- 
- 
+
+
 def P_m(t):
     return P0 - D(t)
- 
- 
+
+
 def dP_m_dt(t):
     """Exact analytic derivative of P_m (product rule). No finite differences."""
     g = 1.0 - np.exp(-t / TAU_R)
@@ -144,26 +130,29 @@ def dP_m_dt(t):
 
 def q_manufactured(t):
     return (-dP_m_dt(t) - lam * (P_m(t) - P0)) / a
- 
- 
-def run_mms(n_steps=N_STEPS):
-    t, P = improved_euler_pressure(q_manufactured, P_m(t0), n_steps)
+
+
+def run_mms(n_pts=N_PTS):
+    # Solve with the simulator's own RK45 solver, driven by the manufactured q
+    t_m = np.linspace(t0, t1, n_pts)
+    t, P = solve_pressure(q_manufactured, t0, t1, pars, t_m, MAX_STEP,
+                          P_init=P_m(t0), rtol=RTOL, atol=ATOL)
     return t, P, np.abs(P - P_m(t))
- 
- 
+
+
 def plot_mms(t, P, err):
     fig, ax = plt.subplots(1, 2, figsize=(15, 4.2))
     circ = dict(marker="o", color="red", ls="none", ms=4, mfc="none")
     tf = np.linspace(t0, t1, 600)
- 
+
     # Panel 1: numerical (red circles) vs manufactured (black line).
     ax[0].plot(tf / YEAR, P_m(tf) / 1e6, "k-", label="manufactured $P_m$")
-    ax[0].plot(t / YEAR, P / 1e6, label="Improved Euler", **circ)
+    ax[0].plot(t / YEAR, P / 1e6, label="Simulator (RK45)", **circ)
     ax[0].set(xlabel="time (years)", ylabel="P (MPa)",
               title="MMS: numerical vs manufactured")
     ax[0].legend()
- 
- 
+
+
     # Panel 3: the manufactured extraction rate that drives the test.
     ax[1].plot(tf / YEAR, q_manufactured(tf), "C2")
     ax[1].axhline(0, color="grey", lw=1)
