@@ -4,6 +4,16 @@ from pathlib import Path
 
 from simulator import make_q, solve_pressure
 
+FONT_SIZE = 18
+plt.rcParams.update({
+    "font.size": FONT_SIZE,
+    "axes.labelsize": FONT_SIZE,
+    "axes.titlesize": FONT_SIZE + 2,
+    "xtick.labelsize": FONT_SIZE,
+    "ytick.labelsize": FONT_SIZE,
+    "legend.fontsize": FONT_SIZE - 2,
+})
+
 HERE = Path(__file__).resolve().parent
 DATA = HERE / "benchmark_reservoir.csv"
 
