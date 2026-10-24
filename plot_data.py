@@ -6,18 +6,22 @@ import matplotlib.pyplot as plt
 DATA_FILE = "data/rotorua_data.csv"
 OUTPUT_DIR = "Plots"
 COLOUR = "tab:blue"
-FONT_SIZE = 13
+CLOSURE_YEAR = 1986      # start of borehole closure programme
+SHOW_CLOSURE_LINE = True
 
-# Figure sized to the text width of an A4 Word page with standard 2.54 cm
+# Width matches the text width of an A4 Word page with standard 2.54 cm
 # margins (~6.3 in), so fonts appear at their true size in the document.
-FIG_SIZE = (6.3, 2.9)
+# Height is larger than before to fit three stacked panels.
+FIG_SIZE = (6.3, 6.5)
 
+FONT_SIZE = 14
 plt.rcParams.update({
     "font.size": FONT_SIZE,
-    "axes.labelsize": FONT_SIZE,
-    "axes.titlesize": FONT_SIZE + 1,
-    "xtick.labelsize": FONT_SIZE - 1,
-    "ytick.labelsize": FONT_SIZE - 1,
+    "axes.labelsize": FONT_SIZE + 3,
+    "axes.titlesize": FONT_SIZE + 6,
+    "xtick.labelsize": FONT_SIZE,
+    "ytick.labelsize": FONT_SIZE,
+    "legend.fontsize": FONT_SIZE - 2,
 })
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -26,30 +30,40 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 df = pd.read_csv(DATA_FILE)
 df = df[df["year"] >= 1950]
 
-# Pressure has gaps, so drop missing values for that plot only
+# Pressure and temperature have gaps (different sampling frequencies),
+# so drop missing values separately for each quantity.
 pressure = df.dropna(subset=["pressure_[MPa]"])
+temperature = df.dropna(subset=["temperature_[degC]"])
 
-# ---- Plot 1: Extraction ----
-fig1, ax1 = plt.subplots(figsize=FIG_SIZE)
+# ---- Stacked plot: extraction, pressure, temperature ----
+fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=FIG_SIZE, sharex=True)
+
+# Extraction (annual, continuous line)
 ax1.plot(df["year"], df["extraction_[tonnes/day]"], color=COLOUR, linewidth=2.5)
-ax1.set_xlabel("Year")
-ax1.set_ylabel("Extraction [tonnes/day]")
-ax1.set_title("Reservoir Extraction Over Time")
-ax1.set_xlim(left=1950)
-ax1.grid(True, alpha=0.3)
-fig1.tight_layout()
-fig1.savefig(os.path.join(OUTPUT_DIR, "extraction_plot.png"), dpi=300)
+ax1.set_ylabel("Extraction\n[tonnes/day]")
 
-# ---- Plot 2: Pressure ----
-fig2, ax2 = plt.subplots(figsize=FIG_SIZE)
+# Pressure (annual from 1985, line with markers)
 ax2.plot(pressure["year"], pressure["pressure_[MPa]"], color=COLOUR,
          linewidth=2.5, marker="o", markersize=5)
-ax2.set_xlabel("Year")
-ax2.set_ylabel("Pressure [MPa]")
-ax2.set_title("Reservoir Pressure Over Time")
-ax2.set_xlim(left=1950)
-ax2.grid(True, alpha=0.3)
-fig2.tight_layout()
-fig2.savefig(os.path.join(OUTPUT_DIR, "pressure_plot.png"), dpi=300)
+ax2.set_ylabel("Pressure\n[MPa]")
+
+# Temperature (5-yearly, line with markers)
+ax3.plot(temperature["year"], temperature["temperature_[degC]"], color=COLOUR,
+         linewidth=2.5, marker="o", markersize=5)
+ax3.set_ylabel("Temperature\n[°C]")
+ax3.set_xlabel("Year")
+
+for ax, label in zip((ax1, ax2, ax3), ("(a)", "(b)", "(c)")):
+    ax.grid(True, alpha=0.3)
+    ax.text(0.01, 0.95, label, transform=ax.transAxes,
+            va="top", ha="left", fontweight="bold")
+    if SHOW_CLOSURE_LINE:
+        ax.axvline(CLOSURE_YEAR, color="grey", linestyle="--", linewidth=1.5)
+
+ax3.set_xlim(left=1950)
+
+fig.align_ylabels([ax1, ax2, ax3])
+fig.tight_layout()
+fig.subplots_adjust(hspace=0.12)
 
 plt.show()
